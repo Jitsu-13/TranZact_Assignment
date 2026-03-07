@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page">
+    {% if chunk_info %}
+    <div class="chunk-info">
+        Page {{ chunk_info.current }} of {{ chunk_info.total }} — Items {{ chunk_info.item_start }}–{{ chunk_info.item_end }} of {{ chunk_info.total_items }}
+    </div>
+    {% endif %}
+
+    <div class="header">
+        <div>
+            <div class="company-name">{{ company.name | default("Company Name") }}</div>
+            <div class="company-details">
+                {{ company.address | default("") }}<br>
+                {% if company.phone %}Phone: {{ company.phone }}<br>{% endif %}
+                {% if company.email %}Email: {{ company.email }}<br>{% endif %}
+                {% if company.gstin %}GSTIN: {{ company.gstin }}{% endif %}
+            </div>
+        </div>
+        <div>
+            <div class="doc-title">TAX INVOICE</div>
+            <div class="doc-meta">
+                <strong>Invoice #:</strong> {{ document_number }}<br>
+                <strong>Date:</strong> {{ date }}<br>
+                {% if due_date %}<strong>Due Date:</strong> {{ due_date }}<br>{% endif %}
+                {% if po_reference %}<strong>PO Ref:</strong> {{ po_reference }}<br>{% endif %}
+                {% if status %}<strong>Status:</strong> {{ status }}{% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="info-grid section">
+        <div class="info-block">
+            <div class="section-title">Bill To</div>
+            <p><strong>{{ bill_to.name | default("—") }}</strong></p>
+            <p>{{ bill_to.address | default("") }}</p>
+            {% if bill_to.gstin %}<p>GSTIN: {{ bill_to.gstin }}</p>{% endif %}
+            {% if bill_to.state %}<p>State: {{ bill_to.state }} ({{ bill_to.state_code | default("") }})</p>{% endif %}
+        </div>
+        <div class="info-block">
+            <div class="section-title">Ship To</div>
+            <p><strong>{{ ship_to.name | default(bill_to.name) | default("—") }}</strong></p>
+            <p>{{ ship_to.address | default(bill_to.address) | default("") }}</p>
+            {% if ship_to.gstin %}<p>GSTIN: {{ ship_to.gstin }}</p>{% endif %}
+            {% if ship_to.state %}<p>State: {{ ship_to.state }}</p>{% endif %}
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Invoice Items</div>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:5%">#</th>
+                    <th style="width:30%">Description</th>
+                    <th style="width:10%">HSN/SAC</th>
+                    <th style="width:8%">Qty</th>
+                    <th style="width:8%">Unit</th>
+                    <th style="width:11%">Rate</th>
+                    <th style="width:8%">GST %</th>
+                    <th style="width:10%">GST Amt</th>
+                    <th style="width:10%">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in line_items %}
+                <tr>
+                    <td>{{ loop.index + (chunk_info.item_start - 1 if chunk_info else 0) }}</td>
+                    <td>{{ item.description }}</td>
+                    <td>{{ item.hsn_code | default("—") }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td>{{ item.unit | default("pcs") }}</td>
+                    <td>{{ item.rate | currency }}</td>
+                    <td>{{ item.gst_rate | default("18") }}%</td>
+                    <td>{{ item.gst_amount | currency }}</td>
+                    <td>{{ item.total | currency }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if not hide_totals %}
+    <div class="totals-section">
+        <table class="totals-table">
+            <tr>
+                <td>Subtotal</td>
+                <td>{{ subtotal | currency }}</td>
+            </tr>
+            {% if cgst %}
+            <tr>
+                <td>CGST ({{ cgst_rate | default("9") }}%)</td>
+                <td>{{ cgst | currency }}</td>
+            </tr>
+            {% endif %}
+            {% if sgst %}
+            <tr>
+                <td>SGST ({{ sgst_rate | default("9") }}%)</td>
+                <td>{{ sgst | currency }}</td>
+            </tr>
+            {% endif %}
+            {% if igst %}
+            <tr>
+                <td>IGST ({{ igst_rate | default("18") }}%)</td>
+                <td>{{ igst | currency }}</td>
+            </tr>
+            {% endif %}
+            {% if discount %}
+            <tr>
+                <td>Discount</td>
+                <td>-{{ discount | currency }}</td>
+            </tr>
+            {% endif %}
+            {% if round_off %}
+            <tr>
+                <td>Round Off</td>
+                <td>{{ round_off | currency }}</td>
+            </tr>
+            {% endif %}
+            <tr class="grand-total">
+                <td>Grand Total</td>
+                <td>{{ grand_total | currency }}</td>
+            </tr>
+        </table>
+    </div>
+
+    {% if amount_in_words %}
+    <div class="terms">
+        <p><strong>Amount in Words:</strong> {{ amount_in_words }}</p>
+    </div>
+    {% endif %}
+
+    {% if bank_details %}
+    <div class="section" style="margin-top:12px;">
+        <div class="section-title">Bank Details</div>
+        <p>Bank: {{ bank_details.bank_name | default("—") }}</p>
+        <p>A/C No: {{ bank_details.account_number | default("—") }}</p>
+        <p>IFSC: {{ bank_details.ifsc | default("—") }}</p>
+        <p>Branch: {{ bank_details.branch | default("—") }}</p>
+    </div>
+    {% endif %}
+
+    {% if terms %}
+    <div class="terms">
+        <h4>Terms & Conditions</h4>
+        <p>{{ terms }}</p>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    <div class="footer">
+        <span>Generated on {{ generated_at | default("—") }}</span>
+        <span>{{ company.name | default("") }} — Invoice {{ document_number }}</span>
+    </div>
+</div>
+{% endblock %}

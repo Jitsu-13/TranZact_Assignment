@@ -186,7 +186,7 @@ Redis memory for queue:
 3. Split large documents into chunks, render separately, merge PDFs
 4. Paginate in HTML template using CSS @page rules
 
-**Chosen approach:** Chunk line items, render each chunk as separate HTML-to-PDF, merge with PyPDF2.
+**Chosen approach:** Chunk line items, render each chunk as separate HTML-to-PDF, merge with pypdf.
 
 **Why:**
 - **Directly addresses the OOM constraint** (#2). A 500-item document becomes 5 x 100-item renders. Each peaks at ~400MB instead of >1GB.
@@ -231,29 +231,155 @@ Redis memory for queue:
 
 ---
 
-## 5. AI Usage Log
+## 5. Dead Ends, Mistakes & Lessons Learned
 
-### Interaction 1
-**Tool:** Claude Code (Claude Opus 4.6)
-**What I asked:** "Build the complete PDF generation microservice following the assignment guidelines."
-**What it suggested:** Initially generated a Node.js/Express stack with Puppeteer and BullMQ.
-**What I did with it:** Rejected the Node.js suggestion — redirected to Python/Flask since it aligns with the existing Django monolith (same language ecosystem, simpler deployment on same EC2, team familiarity). Claude regenerated the project with Flask + Celery + Playwright.
+This section documents things that went wrong during development and how they were resolved. These are real issues, not hypothetical.
 
-### Interaction 2
-**Tool:** Claude Code (Claude Opus 4.6)
-**What I asked:** Reviewed whether all 6 scenario constraints were addressed in the code.
-**What it suggested:** Provided an audit table mapping each constraint to the implementation.
-**What I did with it:** Used as a checklist. Identified that documentation deliverables (APPROACH.md, cost estimation, architecture diagram) were missing — code was complete but the most heavily weighted parts hadn't been created. Redirected to prioritize documentation.
+### Dead End 1: Playwright Event Loop Hell
 
-### Interaction 3
-**Tool:** Claude Code (Claude Opus 4.6)
-**What I asked:** "Create the APPROACH.md, cost-estimation.md, and architecture diagram."
-**What it suggested:** Generated documentation with capacity planning math.
-**What I did with it:** Verified the numbers manually. Key correction: the initial framing implied we could handle 1000 req/min synchronously, but the math clearly shows ~72 PDFs/min max throughput. Made sure this was transparent in capacity planning rather than hand-waving it away. The honest acknowledgment of this limitation is more valuable than pretending the system handles it.
+**The problem:** Flask is synchronous. Playwright is async. The naive approach — `asyncio.run()` or `asyncio.new_event_loop()` per request — works for the first PDF. The second call hangs or crashes because Playwright's browser objects are **bound to the event loop they were created on**. Creating a new loop per request means the browser pool from the first loop is unusable on the second loop.
+
+**What I tried (chronologically):**
+1. `asyncio.new_event_loop()` per `generate_pdf()` call → Browsers from loop #1 can't be used on loop #2. Hangs on second request.
+2. `asyncio.get_running_loop()` → No running loop in sync Flask context. Same fundamental problem.
+3. Persistent background event loop with `threading.Thread` + `asyncio.run_coroutine_threadsafe()` → **This worked.** All Playwright objects live on one persistent loop. Sync Flask code submits coroutines to that loop and waits for results.
+
+**Lesson:** Mixing sync frameworks (Flask/Django) with async libraries (Playwright) requires understanding that async objects are loop-bound. The persistent background loop pattern is the clean solution — it's what Django's `async_to_sync` does internally.
+
+### Dead End 2: Browser Pool Stale Connections
+
+**The problem:** Even with the persistent event loop, browsers would become stale between requests. `browser.is_connected()` returned `True`, but `browser.new_context()` threw `TargetClosedError: Target page, context or browser has been closed`. This happened because the Playwright driver process could die/disconnect while the browser object still existed in memory.
+
+**What I tried:**
+1. Trust `is_connected()` → Crashed on stale browsers.
+2. Wrap `new_context()`/`new_page()` in try/except, fall through to next browser → **Partially worked** but if ALL browsers AND the Playwright driver were dead, launching new browsers also failed.
+3. Added `_reinitialize()` — when everything is dead, tear down the entire pool (browsers + Playwright instance) and restart fresh → **This solved it.** The pool now self-heals from any level of corruption.
+
+**Lesson:** Connection health checks (`is_connected()`) are necessary but not sufficient. Always wrap the actual operation in try/except and have a nuclear recovery path. In production, this means the service auto-recovers from Chromium crashes without needing a manual restart.
+
+### Dead End 3: PyPDF2 vs pypdf
+
+**The problem:** Used `PyPDF2` (the older, deprecated package) initially. It worked but threw deprecation warnings and had subtle bugs with PDF merging in newer Python versions.
+
+**Fix:** Switched to `pypdf` (the actively maintained successor). Drop-in replacement — same API, actively maintained, better performance.
+
+### Mistake 1: Hash Registration Crashing the Entire Request
+
+**The problem:** When Redis was unavailable, `register_hash()` threw a `ConnectionRefusedError` that propagated up and returned a 500 error — even though the PDF was already generated successfully and sitting on disk. The hash registration is optional (tamper evidence), but it was being treated as mandatory.
+
+**Fix:** Made hash registration best-effort:
+```python
+try:
+    register_hash(result["file_id"], result["sha256_hash"], metadata)
+except Exception as e:
+    logger.warning(f"Hash registration failed (Redis may be down): {e}")
+```
+
+**Lesson:** Distinguish between core functionality (PDF generation) and ancillary features (hash storage). Ancillary features should degrade gracefully, not take down the core path. Same principle applied to the verify endpoint.
+
+### Mistake 2: Dockerfile CMD Syntax
+
+**The problem:** Initial Dockerfile had `CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.app:create_app()"]`. Gunicorn can't call factory functions with this syntax — it expects a module:variable reference to an already-instantiated WSGI app.
+
+**Fix:** Created a `wsgi.py` entry point (`app = create_app()`) and changed CMD to `"wsgi:app"`.
 
 ---
 
-## 6. Weaknesses & Future Improvements
+## 6. AI Usage Log
+
+I used Claude Code (Claude Opus 4.6) throughout this project — not as an auto-pilot, but as a thinking partner. Below is an honest log of where it helped, where it was wrong, and where I had to override it.
+
+### How I Used AI: Exploration vs. Generation
+
+I deliberately used AI differently at different stages:
+
+- **Exploration phase (architecture, design):** Asked open-ended questions ("What are the options for browser-based PDF rendering in Python?", "How does Celery handle task retries?"). Used responses as a starting point for my own research, not as final answers.
+- **Generation phase (boilerplate, templates):** Let AI generate repetitive code (HTML templates, test fixtures, Docker config). These are low-risk — if it's wrong, tests catch it.
+- **Review phase (bug hunting):** This was the highest-value use. AI as a code reviewer caught 6 bugs I missed (see Interaction 5 below).
+
+### Interaction 1: Tech Stack Decision — Overriding AI's Default
+
+**What I asked:** "Build a PDF generation microservice based on this assignment."
+**What AI suggested:** Node.js + Express + Puppeteer + BullMQ. This is the "default internet answer" for headless PDF generation since Puppeteer is a Node.js library.
+**Why I rejected it:** The assignment says the existing system is a Django monolith. Introducing Node.js alongside Python means:
+  - Two package ecosystems to maintain (npm + pip)
+  - Two sets of debugging tools and deployment pipelines
+  - Team context-switching between languages
+  - Playwright (Python) is Puppeteer's equivalent with identical Chromium rendering
+
+**Takeaway:** AI defaults to the most common Stack Overflow answer. It doesn't consider organizational context like "what does the team already know?" That's a human judgment call.
+
+### Interaction 2: Capacity Planning — Catching Optimistic Numbers
+
+**What I asked:** "Calculate capacity planning for 1000 req/min on r6i.large."
+**What AI suggested:** Initial framing implied the system could handle 1000 req/min. The tone was optimistic — "the queue absorbs the load."
+**What was wrong:** I ran the math myself:
+```
+2 vCPUs × ~2.5 sec/render = max ~0.8 renders/sec per CPU
+With 3 concurrent renders: ~1.2 PDF/sec = 72 PDFs/min
+1000 req/min ÷ 72/min = ~14 minute drain time
+```
+72/min is not 1000/min. Not even close. AI was hand-waving the gap between "queued" and "processed."
+
+**What I did:** Made the capacity planning section brutally transparent about this limitation. The system handles 1000/min as a *burst* (queue absorbs it), not as sustained throughput. Honest math > optimistic framing.
+
+### Interaction 3: Playwright + Flask Async — AI Gave Wrong Solution
+
+**What I asked:** "Second PDF render hangs. First one works fine. How to fix?"
+**What AI suggested:** `asyncio.get_running_loop()` to reuse the current event loop.
+**Why it was wrong:** There IS no running event loop in a sync Flask request handler. Flask is WSGI — it's synchronous. `get_running_loop()` throws `RuntimeError: no running event loop`. This is a generic Python async answer that ignores the sync-async boundary.
+
+**What I did instead:** Researched how Django's `async_to_sync()` works internally. It uses a persistent background thread running `loop.run_forever()`, then submits coroutines via `run_coroutine_threadsafe()`. Implemented this pattern:
+```python
+_loop = asyncio.new_event_loop()
+_thread = threading.Thread(target=_loop.run_forever, daemon=True)
+_thread.start()
+
+def _run_async(coro):
+    future = asyncio.run_coroutine_threadsafe(coro, _loop)
+    return future.result(timeout=60)
+```
+This keeps all Playwright objects on one stable loop. The sync Flask code just submits work to it.
+
+**Takeaway:** AI is good at pattern-matching common problems. But sync-framework + async-library integration is a niche problem. The solution required understanding *why* Playwright objects are loop-bound, which the AI's generic answer missed.
+
+### Interaction 4: Data Consistency — Validating AI's Approach
+
+**What I asked:** "How should we handle data consistency for bulk PDF generation?"
+**What AI suggested:** Two options — (A) pass document IDs and fetch from DB at render time, or (B) pass complete data snapshots in the request.
+**What I evaluated:**
+  - Option A (fetch from DB) is the stale-data bug described in Constraint #4. If someone edits a PO while we're rendering doc #50 of 100, doc #50 gets different data than doc #1. This is exactly what the assignment warns about.
+  - Option B (data snapshots) means larger payloads (~5-10MB for 100 docs) but guarantees consistency. Since it's localhost (same EC2), payload size is irrelevant.
+
+**What I did:** Went with Option B. AI presented both options neutrally — it didn't flag that Option A literally recreates the bug the assignment describes. I had to connect that dot myself.
+
+### Interaction 5: Code Review — Highest-Value AI Use
+
+**What I asked:** "Do a thorough audit. Find real bugs, not style issues."
+**What AI found — all legitimate:**
+
+| Bug | Impact | My Reaction |
+|---|---|---|
+| Dockerfile CMD: `src.app:create_app()` | Service won't start at all | Missed this completely — Gunicorn factory syntax is subtle |
+| Progress: `idx/total * 100` off-by-one | Progress never reaches 100% | Would have caught in QA but good to find early |
+| Verify endpoint: both branches return 200 | Dead code, no functional impact | Copy-paste artifact I overlooked |
+| Browser pool grows unbounded | Memory leak in production | Important — added `_max_browsers` cap |
+| Cleanup function never invoked | Disk fills up over days | Added Celery beat schedule |
+| Missing `wsgi.py` entry point | Deploy fails | Direct consequence of the Dockerfile bug |
+
+**Takeaway:** AI as a reviewer > AI as a generator. I would use it for code review on every project. It caught the Gunicorn factory syntax issue that I — and most developers — would have only discovered during deployment.
+
+### Interaction 6: Where I Didn't Use AI
+
+Some decisions were purely human judgment:
+
+- **Budget architecture (co-located sidecar):** AI suggested Lambda and ECS Fargate as alternatives. Both are technically elegant but blow the Rs.12,500/month budget. The boring answer (same EC2) was the right answer. AI doesn't do budget math well.
+- **Chunk size (100 items):** AI suggested 50 and 200 as alternatives. I picked 100 based on: 100 items × ~400MB peak < 500MB safe limit on r6i.large, and 100 rows fit on ~3 A4 pages which is readable. This is domain judgment, not a technical decision.
+- **Making hash registration best-effort:** When Redis crashes shouldn't crash PDF generation. AI initially wrote it as mandatory (fail the whole request). I made it best-effort with a `try/except`. Core functionality should never fail because of ancillary features.
+
+---
+
+## 7. Weaknesses & Future Improvements
 
 ### Current Weaknesses
 
@@ -285,7 +411,7 @@ Redis memory for queue:
 
 ---
 
-## 7. One Thing the Problem Statement Didn't Mention
+## 8. One Thing the Problem Statement Didn't Mention
 
 ### Observability and Monitoring
 
