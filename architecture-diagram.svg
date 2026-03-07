@@ -1,0 +1,197 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 780" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2980b9"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#27ae60"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#e67e22"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="780" fill="#f8f9fa" rx="8"/>
+
+  <!-- Title -->
+  <text x="550" y="35" text-anchor="middle" font-size="18" font-weight="700" fill="#2c3e50">PDF Generation Microservice — Architecture Diagram</text>
+  <text x="550" y="55" text-anchor="middle" font-size="11" fill="#7f8c8d">Co-located on EC2 r6i.large (2 vCPU, 16GB RAM) alongside Django Monolith</text>
+
+  <!-- EC2 Instance boundary -->
+  <rect x="30" y="70" width="1040" height="520" rx="12" fill="none" stroke="#2c3e50" stroke-width="2" stroke-dasharray="8,4"/>
+  <text x="50" y="92" font-size="12" font-weight="600" fill="#2c3e50">EC2 r6i.large — Single Instance</text>
+
+  <!-- ==================== CLIENT ==================== -->
+  <rect x="420" y="640" width="260" height="55" rx="8" fill="#ecf0f1" stroke="#bdc3c7" stroke-width="1.5"/>
+  <text x="550" y="663" text-anchor="middle" font-size="13" font-weight="600" fill="#2c3e50">Browser / Django Frontend</text>
+  <text x="550" y="680" text-anchor="middle" font-size="10" fill="#7f8c8d">SMB users on unreliable connections</text>
+
+  <!-- ==================== DJANGO MONOLITH ==================== -->
+  <rect x="60" y="110" width="220" height="130" rx="8" fill="#3498db" fill-opacity="0.1" stroke="#3498db" stroke-width="1.5"/>
+  <text x="170" y="135" text-anchor="middle" font-size="13" font-weight="700" fill="#2c3e50">Django Monolith</text>
+  <text x="170" y="155" text-anchor="middle" font-size="10" fill="#555">(Primary ERP Service)</text>
+  <text x="170" y="175" text-anchor="middle" font-size="9" fill="#7f8c8d">Captures data snapshots</text>
+  <text x="170" y="190" text-anchor="middle" font-size="9" fill="#7f8c8d">at request time for</text>
+  <text x="170" y="205" text-anchor="middle" font-size="9" fill="#7f8c8d">bulk consistency (Constraint #4)</text>
+  <text x="170" y="225" text-anchor="middle" font-size="9" font-weight="600" fill="#3498db">~4 GB RAM</text>
+
+  <!-- ==================== PDF SERVICE (Flask API) ==================== -->
+  <rect x="370" y="110" width="340" height="130" rx="8" fill="#27ae60" fill-opacity="0.1" stroke="#27ae60" stroke-width="1.5"/>
+  <text x="540" y="135" text-anchor="middle" font-size="13" font-weight="700" fill="#2c3e50">Flask API (Gunicorn)</text>
+  <text x="540" y="155" text-anchor="middle" font-size="10" fill="#555">PDF Generation Service — Port 5000</text>
+
+  <!-- Endpoints inside Flask -->
+  <rect x="385" y="165" width="145" height="60" rx="4" fill="#fff" stroke="#27ae60" stroke-width="1"/>
+  <text x="457" y="182" text-anchor="middle" font-size="9" font-weight="600" fill="#27ae60">Sync Endpoints</text>
+  <text x="457" y="196" text-anchor="middle" font-size="8" fill="#555">POST /generate</text>
+  <text x="457" y="208" text-anchor="middle" font-size="8" fill="#555">GET /download/{id}</text>
+  <text x="457" y="220" text-anchor="middle" font-size="8" fill="#555">POST /verify/{id}</text>
+
+  <rect x="545" y="165" width="150" height="60" rx="4" fill="#fff" stroke="#e67e22" stroke-width="1"/>
+  <text x="620" y="182" text-anchor="middle" font-size="9" font-weight="600" fill="#e67e22">Async Endpoints</text>
+  <text x="620" y="196" text-anchor="middle" font-size="8" fill="#555">POST /bulk (queues job)</text>
+  <text x="620" y="208" text-anchor="middle" font-size="8" fill="#555">GET /bulk/{id}/progress SSE</text>
+  <text x="620" y="220" text-anchor="middle" font-size="8" fill="#555">GET /bulk/{id}/download ZIP</text>
+
+  <!-- ==================== CELERY WORKER ==================== -->
+  <rect x="370" y="280" width="340" height="100" rx="8" fill="#e67e22" fill-opacity="0.1" stroke="#e67e22" stroke-width="1.5"/>
+  <text x="540" y="305" text-anchor="middle" font-size="13" font-weight="700" fill="#2c3e50">Celery Worker</text>
+  <text x="540" y="322" text-anchor="middle" font-size="10" fill="#555">Concurrency: 2 (prefetch=1, ack_late=true)</text>
+  <text x="540" y="340" text-anchor="middle" font-size="9" fill="#7f8c8d">Processes bulk jobs sequentially per worker</text>
+  <text x="540" y="355" text-anchor="middle" font-size="9" fill="#7f8c8d">Retry: 3 attempts per document, soft limit 5min</text>
+  <text x="540" y="370" text-anchor="middle" font-size="9" font-weight="600" fill="#e67e22">~150 MB RAM + render overhead</text>
+
+  <!-- ==================== PLAYWRIGHT BROWSER POOL ==================== -->
+  <rect x="370" y="420" width="340" height="90" rx="8" fill="#9b59b6" fill-opacity="0.1" stroke="#9b59b6" stroke-width="1.5"/>
+  <text x="540" y="445" text-anchor="middle" font-size="13" font-weight="700" fill="#2c3e50">Playwright Browser Pool</text>
+  <text x="540" y="462" text-anchor="middle" font-size="10" fill="#555">3 Chromium instances (headless, --no-sandbox)</text>
+  <text x="540" y="478" text-anchor="middle" font-size="9" fill="#7f8c8d">Semaphore-controlled: max 2 concurrent renders</text>
+  <text x="540" y="493" text-anchor="middle" font-size="9" fill="#7f8c8d">Chunked rendering for 500+ items (Constraint #2)</text>
+  <text x="540" y="506" text-anchor="middle" font-size="9" font-weight="600" fill="#9b59b6">~240 MB idle, ~800 MB peak (2 renders)</text>
+
+  <!-- ==================== REDIS ==================== -->
+  <rect x="800" y="110" width="240" height="150" rx="8" fill="#e74c3c" fill-opacity="0.1" stroke="#e74c3c" stroke-width="1.5"/>
+  <text x="920" y="135" text-anchor="middle" font-size="13" font-weight="700" fill="#2c3e50">Redis</text>
+  <text x="920" y="152" text-anchor="middle" font-size="10" fill="#555">(Existing — shared with Django)</text>
+
+  <rect x="815" y="162" width="210" height="22" rx="3" fill="#fff" stroke="#e74c3c" stroke-width="0.5"/>
+  <text x="920" y="178" text-anchor="middle" font-size="9" fill="#555">DB 0: Django cache (existing)</text>
+
+  <rect x="815" y="190" width="210" height="22" rx="3" fill="#fff" stroke="#e74c3c" stroke-width="0.5"/>
+  <text x="920" y="206" text-anchor="middle" font-size="9" fill="#555">DB 1: Celery broker (job queue)</text>
+
+  <rect x="815" y="218" width="210" height="22" rx="3" fill="#fff" stroke="#e74c3c" stroke-width="0.5"/>
+  <text x="920" y="234" text-anchor="middle" font-size="9" fill="#555">DB 2: Celery result backend</text>
+
+  <rect x="815" y="246" width="210" height="0" rx="3" fill="none"/>
+
+  <!-- ==================== HASH REGISTRY (inside Redis) ==================== -->
+  <rect x="800" y="290" width="240" height="70" rx="8" fill="#e74c3c" fill-opacity="0.05" stroke="#e74c3c" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="920" y="312" text-anchor="middle" font-size="11" font-weight="600" fill="#2c3e50">Hash Registry</text>
+  <text x="920" y="328" text-anchor="middle" font-size="9" fill="#555">SHA-256 hashes in Redis DB 0</text>
+  <text x="920" y="343" text-anchor="middle" font-size="9" fill="#7f8c8d">Tamper evidence (Constraint #5)</text>
+
+  <!-- ==================== LOCAL STORAGE ==================== -->
+  <rect x="800" y="400" width="240" height="110" rx="8" fill="#f39c12" fill-opacity="0.1" stroke="#f39c12" stroke-width="1.5"/>
+  <text x="920" y="425" text-anchor="middle" font-size="13" font-weight="700" fill="#2c3e50">Local Disk (EBS gp3)</text>
+  <text x="920" y="445" text-anchor="middle" font-size="10" fill="#555">./generated_pdfs/</text>
+  <text x="920" y="465" text-anchor="middle" font-size="9" fill="#7f8c8d">Individual PDFs: {uuid}.pdf</text>
+  <text x="920" y="480" text-anchor="middle" font-size="9" fill="#7f8c8d">Bulk ZIPs: bulk_{timestamp}.zip</text>
+  <text x="920" y="495" text-anchor="middle" font-size="9" fill="#7f8c8d">24h retention, auto-cleanup</text>
+
+  <!-- ==================== JINJA2 TEMPLATES ==================== -->
+  <rect x="60" y="280" width="220" height="80" rx="8" fill="#1abc9c" fill-opacity="0.1" stroke="#1abc9c" stroke-width="1.5"/>
+  <text x="170" y="305" text-anchor="middle" font-size="12" font-weight="600" fill="#2c3e50">Jinja2 Templates</text>
+  <text x="170" y="325" text-anchor="middle" font-size="9" fill="#555">purchase_order.html</text>
+  <text x="170" y="340" text-anchor="middle" font-size="9" fill="#555">invoice.html</text>
+  <text x="170" y="355" text-anchor="middle" font-size="9" fill="#7f8c8d">Chunk-aware (pagination info)</text>
+
+  <!-- ==================== PostgreSQL ==================== -->
+  <rect x="60" y="420" width="220" height="90" rx="8" fill="#3498db" fill-opacity="0.1" stroke="#3498db" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="170" y="445" text-anchor="middle" font-size="12" font-weight="600" fill="#2c3e50">PostgreSQL (RDS)</text>
+  <text x="170" y="462" text-anchor="middle" font-size="10" fill="#555">Existing — Django primary DB</text>
+  <text x="170" y="480" text-anchor="middle" font-size="9" fill="#7f8c8d">Optional: persist hash records</text>
+  <text x="170" y="495" text-anchor="middle" font-size="9" fill="#7f8c8d">for long-term compliance audit</text>
+
+  <!-- ==================== ARROWS ==================== -->
+
+  <!-- Client -> Django -->
+  <line x1="480" y1="640" x2="170" y2="245" stroke="#3498db" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <text x="280" y="460" font-size="9" fill="#3498db" transform="rotate(-55, 280, 460)">HTTP request</text>
+
+  <!-- Django -> Flask API (data snapshot) -->
+  <line x1="280" y1="160" x2="365" y2="160" stroke="#27ae60" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <text x="322" y="152" text-anchor="middle" font-size="8" font-weight="600" fill="#27ae60">JSON snapshot</text>
+
+  <!-- Flask -> Celery (bulk jobs) -->
+  <line x1="540" y1="242" x2="540" y2="275" stroke="#e67e22" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
+  <text x="555" y="262" font-size="8" fill="#e67e22">enqueue bulk</text>
+
+  <!-- Celery -> Browser Pool -->
+  <line x1="540" y1="382" x2="540" y2="416" stroke="#9b59b6" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="555" y="402" font-size="8" fill="#9b59b6">render PDF</text>
+
+  <!-- Flask -> Browser Pool (sync path) -->
+  <path d="M 400 242 L 400 390 L 400 416" stroke="#27ae60" stroke-width="1.5" fill="none" marker-end="url(#arrow-green)"/>
+  <text x="385" y="350" font-size="8" fill="#27ae60" transform="rotate(-90, 385, 350)">sync render</text>
+
+  <!-- Flask -> Redis (queue + hash) -->
+  <line x1="712" y1="175" x2="795" y2="175" stroke="#e74c3c" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="753" y="168" text-anchor="middle" font-size="8" fill="#e74c3c">broker / results</text>
+
+  <!-- Celery -> Redis (progress updates) -->
+  <line x1="712" y1="320" x2="795" y2="310" stroke="#e74c3c" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="753" y="308" text-anchor="middle" font-size="8" fill="#e74c3c">progress state</text>
+
+  <!-- Browser Pool -> Storage (write PDF) -->
+  <line x1="712" y1="465" x2="795" y2="455" stroke="#f39c12" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
+  <text x="753" y="452" text-anchor="middle" font-size="8" fill="#f39c12">write PDF/ZIP</text>
+
+  <!-- Flask -> Storage (download) -->
+  <path d="M 700 220 Q 780 300 810 430" stroke="#f39c12" stroke-width="1" fill="none" stroke-dasharray="4,3" marker-end="url(#arrow-orange)"/>
+  <text x="775" y="370" font-size="8" fill="#f39c12">read for download</text>
+
+  <!-- Templates -> Browser Pool -->
+  <line x1="280" y1="340" x2="365" y2="450" stroke="#1abc9c" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="310" y="400" font-size="8" fill="#1abc9c" transform="rotate(35, 310, 400)">HTML chunks</text>
+
+  <!-- Client -> Flask (direct) -->
+  <line x1="580" y1="640" x2="580" y2="245" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="595" y="565" font-size="8" fill="#27ae60" transform="rotate(-90, 595, 565)">SSE progress / download (Range)</text>
+
+  <!-- Django -> PostgreSQL -->
+  <line x1="170" y1="242" x2="170" y2="416" stroke="#3498db" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-blue)"/>
+
+  <!-- ==================== LEGEND ==================== -->
+  <rect x="30" y="610" width="350" height="150" rx="6" fill="#fff" stroke="#ddd" stroke-width="1"/>
+  <text x="50" y="632" font-size="11" font-weight="700" fill="#2c3e50">Legend — Data Flows</text>
+
+  <line x1="50" y1="650" x2="90" y2="650" stroke="#27ae60" stroke-width="2"/>
+  <text x="100" y="654" font-size="9" fill="#555">Single PDF: Django -> Flask -> Playwright -> Disk -> Client</text>
+
+  <line x1="50" y1="672" x2="90" y2="672" stroke="#e67e22" stroke-width="2"/>
+  <text x="100" y="676" font-size="9" fill="#555">Bulk PDF: Django -> Flask -> Redis Queue -> Celery Worker</text>
+
+  <line x1="50" y1="694" x2="90" y2="694" stroke="#e74c3c" stroke-width="1.5"/>
+  <text x="100" y="698" font-size="9" fill="#555">Queue + Cache + Hash Registry (Redis)</text>
+
+  <line x1="50" y1="716" x2="90" y2="716" stroke="#9b59b6" stroke-width="1.5"/>
+  <text x="100" y="720" font-size="9" fill="#555">PDF Rendering (Playwright Chromium browser pool)</text>
+
+  <line x1="50" y1="738" x2="90" y2="738" stroke="#555" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="100" y="742" font-size="9" fill="#555">Optional / existing connections</text>
+
+  <!-- Constraint callouts -->
+  <rect x="750" y="610" width="320" height="150" rx="6" fill="#fff" stroke="#ddd" stroke-width="1"/>
+  <text x="770" y="632" font-size="11" font-weight="700" fill="#2c3e50">Constraint Solutions</text>
+  <text x="770" y="652" font-size="9" fill="#555">#1 Infrastructure: Co-located sidecar, uses existing Redis</text>
+  <text x="770" y="668" font-size="9" fill="#555">#2 OOM/Large Docs: Chunked rendering (100 items/chunk)</text>
+  <text x="770" y="684" font-size="9" fill="#555">#3 Unreliable Net: HTTP Range + SSE auto-reconnect</text>
+  <text x="770" y="700" font-size="9" fill="#555">#4 Stale Data: Data snapshot in request payload</text>
+  <text x="770" y="716" font-size="9" fill="#555">#5 Tamper Evidence: SHA-256 hash registry in Redis</text>
+  <text x="770" y="732" font-size="9" fill="#555">#6 Budget: ~$4/mo incremental (on existing EC2)</text>
+</svg>
