@@ -285,6 +285,16 @@ except Exception as e:
 
 ---
 
+## 6. AI Chat Conversation Links
+
+> **Tool Used:** Claude Code (via VS Code extension — `claude-sonnet-4-6` / `claude-opus-4-6` models)
+>
+> Claude Code is a CLI/IDE-integrated tool that does **not** produce shareable public conversation URLs. All prompts, AI responses, what I accepted, what I rejected, and why — are documented in full detail in the AI Usage Log section below.
+>
+> If a shareable link is required, this is a limitation of the tool, not an omission. The interaction log below is a faithful reconstruction of every significant exchange.
+
+---
+
 ## 6. AI Usage Log
 
 I used Claude Code (Claude Opus 4.6) throughout this project — not as an auto-pilot, but as a thinking partner. Below is an honest log of where it helped, where it was wrong, and where I had to override it.
